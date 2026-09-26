@@ -84,6 +84,21 @@ For reference, on 200 seeds (`--seed 0`, Red deck, White stake):
 
 Treat simulator results as provisional until spot-checked on the live game.
 
+### Tuning the shop
+
+`tune_shop.py` tunes every `ShopParams` value with CMA-ES on the simulator
+(`pip install cma`). Each generation plays all candidates on the same fresh
+batch of seeds and maximizes blinds cleared per run; at the end the defaults
+and the tuned values are compared on 1,000 seeds the tuner never saw.
+
+```
+python tune_shop.py --generations 25 --runs-per-eval 100 --workers 8
+python run_baseline.py --sim --runs 500 --shop-params tuned_shop_params.json
+```
+
+It tunes for the hand policy it runs with: exact scoring by default, or
+`--no-exact-scoring` to tune for the live game's estimate-based play.
+
 ## Gym env
 
 `env/balatro_gym.py` wraps the hand-play decisions only. Everything between

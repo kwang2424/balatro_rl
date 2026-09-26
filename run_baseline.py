@@ -8,6 +8,7 @@ Simulator:  python run_baseline.py --sim --runs 500 --workers 8
 
 import argparse
 import csv
+import json
 import multiprocessing
 import random
 import string
@@ -17,7 +18,7 @@ from collections import Counter
 from agent import Agent
 from client import BalatroClient
 from heuristics.hand import HandPolicy
-from heuristics.shop import ShopPolicy
+from heuristics.shop import ShopParams, ShopPolicy
 
 FIELDS = ["seed", "deck", "stake", "won", "ante", "round", "money", "jokers",
           "steps", "seconds", "error"]
@@ -49,8 +50,17 @@ def build_agent(args, client):
     scorer = getattr(client, "score_plays", None) if args.exact_scoring else None
     return Agent(client,
                  hand_policy=HandPolicy(chase_flush=not args.no_flush, scorer=scorer),
-                 shop_policy=ShopPolicy(build=build),
+                 shop_policy=ShopPolicy(load_shop_params(args.shop_params), build=build),
                  log=lambda *_: None)
+
+
+def load_shop_params(path):
+    """ShopParams from a tune_shop.py output file (or defaults if path is None)."""
+    if not path:
+        return ShopParams()
+    with open(path) as f:
+        data = json.load(f)
+    return ShopParams(**data.get("params", data))
 
 
 _worker_agent = None
@@ -103,6 +113,7 @@ def main(argv=None):
     ap.add_argument("--no-exact-scoring", dest="exact_scoring", action="store_false",
                     help="with --sim, rank plays by the joker-blind estimate instead of "
                          "simulating them (matches what the live game can do)")
+    ap.add_argument("--shop-params", help="JSON file from tune_shop.py")
     args = ap.parse_args(argv)
 
     if args.sim:
