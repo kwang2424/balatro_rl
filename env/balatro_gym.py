@@ -1,131 +1,123 @@
+"""Gymnasium env for the hand-play part of Balatro.
+
+The agent only chooses which cards to play or discard. Blinds, cashing out,
+shops and packs are handled by the heuristic Agent between hands.
+
+Action: MultiBinary(MAX_HAND + 1). The first MAX_HAND bits select cards by
+position in hand; the last bit is 1 = play, 0 = discard. Invalid actions
+(no cards, more than 5, selecting empty slots, discarding with none left) are
+penalized and don't change the game.
+
+Reward: chips scored this step / current blind's target, +1 for clearing a
+blind, -1 when the run is lost.
+
+Run from the repo root so the top-level modules import, with the game started
+via `uvx balatrobot serve --fast`.
+"""
+
 import gymnasium as gym
-from gymnasium import spaces
 import numpy as np
-from connect import Connection, Actions
-import time
-from heuristics.shop import ShopPolicy
+from gymnasium import spaces
 
-rank_map = {
-    '2': 2,
-    '3': 3,
-    '4': 4,
-    '5': 5,
-    '6': 6,
-    '7': 7,
-    '8': 8,
-    '9': 9,
-    '10': 10,
-    'J': 11,
-    'Q': 12,
-    'K': 13,
-    'A': 14
-}
+from agent import Agent
+from client import BalatroClient
+from heuristics.hand import RANK_VALUE, current_blind_score
 
-suit_map = {
-    'Hearts': 0,
-    'Diamonds': 1,
-    'Clubs': 2,
-    'Spades': 3
-}
+MAX_HAND = 12
+SUITS = {"H": 0, "D": 1, "C": 2, "S": 3}
+INVALID_PENALTY = -0.1
+
 
 class BalatroGym(gym.Env):
-    def __init__(self, max_steps=10000):
-        self.connection = None
-        self.port = 12346
-        # actions are just, 5 cards + play or discard?
-        self.actions = spaces.MultiDiscrete([2] * 5 + [2])
+    metadata = {"render_modes": []}
 
-        # eventually add actions that include shop decisions
-
-        # obs is just game state
-        # rank, suit, chips, hands_remaining, discards_remaining
-        # also would want to consider vouchers, shops, planets, jokers
-        ranks = spaces.Box(low=2, high=14, shape=(5,), dtype=int)
-        suits = spaces.Box(low=0, high=3, shape=(5,), dtype=int)
-        chips = spaces.Box(low=0, high=np.inf, shape=(1,), dtype=int)
-        hands = spaces.Box(low=0, high=100, shape=(1,), dtype=int)
-        discards = spaces.Box(low=0, high=100, shape=(1,), dtype=int)
-
-        self.obs_space = spaces.Dict({
-            'rank': ranks,
-            'suit': suits,
-            'chips': chips,
-            'hands': hands,
-            'discards': discards
-        })
-        # also later on, want to build functionality that lets it select or skip blinds
-
+    def __init__(self, client=None, agent=None, deck="RED", stake="WHITE",
+                 max_steps=10000):
+        self.client = client or BalatroClient()
+        self.agent = agent or Agent(self.client)
+        self.deck = deck
+        self.stake = stake
         self.max_steps = max_steps
-        self.shop_policy = ShopPolicy()
 
-    def reset(self):
-        if self.connection is None:
-            self.connection = Connection("local_host", self.port)
-            if not self.connection.ping():
-                self.connection.start_instance()
-                time.sleep(10)
+        self.action_space = spaces.MultiBinary(MAX_HAND + 1)
+        self.observation_space = spaces.Dict({
+            "rank": spaces.Box(0, 14, shape=(MAX_HAND,), dtype=np.int64),   # 0 = empty
+            "suit": spaces.Box(-1, 3, shape=(MAX_HAND,), dtype=np.int64),   # -1 = empty
+            "hands_left": spaces.Box(0, 100, shape=(1,), dtype=np.int64),
+            "discards_left": spaces.Box(0, 100, shape=(1,), dtype=np.int64),
+            "progress": spaces.Box(0, np.inf, shape=(1,), dtype=np.float32),  # chips / target
+            "ante": spaces.Box(0, 100, shape=(1,), dtype=np.int64),
+        })
+        self.G = None
+        self.step_count = 0
 
-        return 
-    
-    def to_menu(self):
-        G = self.get_state()
-        current_round = G["current_round"]
-        if current_round["hands_played"] == 0 and current_round["discards_used"] == 0:
-            return
-        self.connection.send_message("MENU")
+    # ---------- gym API ----------
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        run_seed = (options or {}).get("run_seed")
+        if run_seed is None and seed is not None:
+            run_seed = f"GYM{seed:05d}"
+        self.client.menu()
+        G = self.client.start(deck=self.deck, stake=self.stake, seed=run_seed)
+        self.G = self.agent.advance_to(G, {"SELECTING_HAND"})
+        self.step_count = 0
+        return self._obs(self.G), {"state": self.G}
 
     def step(self, action):
         self.step_count += 1
-        cards = action[:-1]
-        discard = action[-1]
+        G = self.G
+        cards = (G.get("hand") or {}).get("cards") or []
+        rnd = G.get("round") or {}
+        selected = [i for i in range(MAX_HAND) if action[i]]
+        play = bool(action[MAX_HAND])
 
-        if self.step_count > self.max_steps:
-            return self.G, 0, True, {}
-        if discard:
-            self.G = self.play_hand(cards)
+        valid = (1 <= len(selected) <= 5 and all(i < len(cards) for i in selected)
+                 and (play or rnd.get("discards_left", 0) > 0))
+        truncated = self.step_count >= self.max_steps
+        if not valid:
+            return self._obs(G), INVALID_PENALTY, False, truncated, {"invalid": True}
+
+        target = current_blind_score(G) or 1
+        chips_before = rnd.get("chips") or 0
+        G = self.client.play(selected) if play else self.client.discard(selected)
+
+        reward = 0.0
+        if G.get("state") == "SELECTING_HAND":
+            reward += ((G.get("round") or {}).get("chips", 0) - chips_before) / target
         else:
-            self.G = self.discard_hand(cards)
-        return self.G, 0, False, {}
-    
-    def get_state(self):
-        G = self.connection.ping()
-        while (
-            not G.get("waitingForAction", False)
-            or G["waitingFor"] != "select_cards_from_hand"
-        ):
-            if G.get("waitingForAction", False):
-                auto_action = self.hardcoded_action(G)
-                self.connection.send_message(auto_action)
+            # Blind over: cleared (ROUND_EVAL or won) or lost (GAME_OVER).
+            if G.get("state") == "GAME_OVER":
+                reward -= 1.0
+            else:
+                reward += max(target - chips_before, 0) / target + 1.0
+            G = self.agent.advance_to(G, {"SELECTING_HAND"})
 
-            G = self.connection.ping()
+        self.G = G
+        terminated = G.get("state") == "GAME_OVER" or bool(G.get("won"))
+        return self._obs(G), reward, terminated, truncated, {"state": G}
 
-        return G
-    
-    def hardcoded_action(self, game_state):
-        match game_state["waitingFor"]:
-            case "start_run":
-                return [
-                    Actions.START_RUN,
-                    self.stake,
-                    self.deck,
-                    self.seed,
-                    self.challenge,
-                ]
-            case "skip_or_select_blind":
-                return [Actions.SELECT_BLIND]
-            case "select_cards_from_hand":
-                return None
-            case "select_shop_action":
-                return self.shop_policy(game_state)
-            case "select_booster_action":
-                return [Actions.SKIP_BOOSTER_PACK]
-            case "sell_jokers":
-                return [Actions.SELL_JOKER, []]
-            case "rearrange_jokers":
-                return [Actions.REARRANGE_JOKERS, []]
-            case "use_or_sell_consumables":
-                return [Actions.USE_CONSUMABLE, []]
-            case "rearrange_consumables":
-                return [Actions.REARRANGE_CONSUMABLES, []]
-            case "rearrange_hand":
-                return [Actions.REARRANGE_HAND, []]
+    # ---------- helpers ----------
+
+    def action_mask(self):
+        """Which card slots currently hold a card (for masking policies)."""
+        n = len((self.G.get("hand") or {}).get("cards") or [])
+        return np.array([i < n for i in range(MAX_HAND)], dtype=bool)
+
+    def _obs(self, G):
+        rank = np.zeros(MAX_HAND, dtype=np.int64)
+        suit = np.full(MAX_HAND, -1, dtype=np.int64)
+        for i, card in enumerate(((G.get("hand") or {}).get("cards") or [])[:MAX_HAND]):
+            v = card.get("value") or {}
+            rank[i] = RANK_VALUE.get(v.get("rank"), 0)
+            suit[i] = SUITS.get(v.get("suit"), -1)
+        rnd = G.get("round") or {}
+        target = current_blind_score(G) or 1
+        return {
+            "rank": rank,
+            "suit": suit,
+            "hands_left": np.array([rnd.get("hands_left", 0)], dtype=np.int64),
+            "discards_left": np.array([rnd.get("discards_left", 0)], dtype=np.int64),
+            "progress": np.array([(rnd.get("chips") or 0) / target], dtype=np.float32),
+            "ante": np.array([G.get("ante_num") or 0], dtype=np.int64),
+        }

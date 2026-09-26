@@ -1,8 +1,7 @@
 """Parameterized rule-based shop policy.
 
-Each call looks at the current game state and returns one shop action; the mod
-re-prompts after every action, so a shop visit is a sequence of calls ending in
-END_SHOP.
+Each call looks at the current game state and returns one shop action; call it
+again with the new state until it returns next_round.
 
 Priority per call:
   1. Buy a good voucher if it doesn't break the money reserve.
@@ -10,15 +9,18 @@ Priority per call:
   3. If slots are full and a shop joker beats our worst one by a margin,
      sell the worst one (the next call then buys the new joker).
   4. Reroll while money is above the reroll reserve and under the reroll cap.
-  5. End the shop.
+  5. Leave the shop.
 
 All numbers live in ShopParams so they can be tuned later (e.g. with CMA-ES)
 via to_vector()/from_vector().
+
+The game state format is the BalatroBot API's (https://github.com/coder/balatrobot).
+Actions are (method, params) tuples such as ("buy", {"card": 0}); run them with
+BalatroClient.do().
 """
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 
-from bot import Actions
 from heuristics import jokers as J
 
 
@@ -46,6 +48,7 @@ class ShopParams:
     copy_per_xmult_owned: float = 1.0 # Blueprint/Brainstorm get better with xmult
     setup_penalty: float = 3.0
     risky_penalty: float = 1.0
+    rental_penalty: float = 2.0
 
     # Editions
     foil_bonus: float = 0.5
@@ -82,9 +85,31 @@ BUILD_TAGS = frozenset({
     "even", "odd",
 })
 
+INTEREST_CAP_VOUCHERS = {"v_seed_money": 50, "v_money_tree": 100}
+
+
+def _cards(G, area):
+    return list((G.get(area) or {}).get("cards") or [])
+
 
 def _is_joker(card):
-    return card.get("set") == "Joker" or (card.get("key") or "").startswith("j_")
+    return card.get("set") == "JOKER" or (card.get("key") or "").startswith("j_")
+
+
+def _buy_cost(card):
+    return (card.get("cost") or {}).get("buy", 99)
+
+
+def _sell_cost(card):
+    return (card.get("cost") or {}).get("sell", 0)
+
+
+def _modifier(card):
+    return card.get("modifier") or {}
+
+
+def _edition(card):
+    return (_modifier(card).get("edition") or "").lower() or None
 
 
 class ShopPolicy:
@@ -132,30 +157,29 @@ class ShopPolicy:
             v -= p.setup_penalty
         if "risky" in tags:
             v -= p.risky_penalty
+        if _modifier(card).get("rental"):
+            v -= p.rental_penalty
 
         build_tags = tags & BUILD_TAGS
         if build_tags & self.build:
             v += p.build_bonus
+        owned_infos = [i for i in map(J.lookup, owned) if i]
         owned_tags = set()
-        for o in owned:
-            oi = J.lookup(o)
-            if oi:
-                owned_tags |= oi.tags & BUILD_TAGS
+        for oi in owned_infos:
+            owned_tags |= oi.tags & BUILD_TAGS
         v += p.shared_tag_bonus * len(build_tags & owned_tags)
 
         if "copy" in tags:
-            n_xmult = sum(1 for o in owned
-                          if (J.lookup(o) and "xmult" in J.lookup(o).tags))
-            v += p.copy_per_xmult_owned * n_xmult
+            v += p.copy_per_xmult_owned * sum("xmult" in oi.tags for oi in owned_infos)
 
-        edition = card.get("edition")
         v += {"foil": p.foil_bonus, "holo": p.holo_bonus,
-              "polychrome": p.polychrome_bonus}.get(edition, 0.0)
+              "polychrome": p.polychrome_bonus}.get(_edition(card), 0.0)
         return v
 
     def reserve(self, G):
         p = self.params
-        cap = G.get("interest_cap") or 25
+        used = G.get("used_vouchers") or {}
+        cap = max([25] + [c for k, c in INTEREST_CAP_VOUCHERS.items() if k in used])
         if self._ante(G) <= p.early_antes:
             return min(p.early_reserve, cap)
         return min(p.reserve, cap)
@@ -164,29 +188,28 @@ class ShopPolicy:
 
     @staticmethod
     def _ante(G):
-        return (G.get("ante") or {}).get("number") or 1
+        return G.get("ante_num") or 1
 
     @staticmethod
     def _slots(G):
-        return G.get("joker_slots") or G.get("max_jokers") or 5
+        return (G.get("jokers") or {}).get("limit") or 5
 
     def _new_shop_visit(self, G):
-        shop_id = (G.get("round"), self._ante(G))
+        shop_id = (G.get("seed"), G.get("round_num"), self._ante(G))
         if shop_id != self._shop_id:
             self._shop_id = shop_id
             self._rerolls = 0
 
     def _worst_owned(self, owned, ante):
         """(index, value) of the least valuable sellable joker, or None."""
-        best = None
+        worst = None
         for i, card in enumerate(owned):
-            if card.get("eternal"):
+            if _modifier(card).get("eternal"):
                 continue
-            others = owned[:i] + owned[i + 1:]
-            v = self.joker_value(card, others, ante)
-            if best is None or v < best[1]:
-                best = (i, v)
-        return best
+            v = self.joker_value(card, owned[:i] + owned[i + 1:], ante)
+            if worst is None or v < worst[1]:
+                worst = (i, v)
+        return worst
 
     # ---------- decision ----------
 
@@ -196,25 +219,24 @@ class ShopPolicy:
     def choose(self, G):
         self._new_shop_visit(G)
         p = self.params
-        shop = G.get("shop") or {}
-        owned = list(G.get("jokers") or [])
-        money = G.get("dollars") or 0
+        owned = _cards(G, "jokers")
+        money = G.get("money") or 0
         ante = self._ante(G)
         reserve = self.reserve(G)
 
         # 1. Vouchers
-        for i, card in enumerate(shop.get("vouchers") or []):
+        for i, card in enumerate(_cards(G, "vouchers")):
             v = J.VOUCHER_VALUES.get(card.get("key"), 0)
-            cost = card.get("cost", 99)
+            cost = _buy_cost(card)
             if v >= p.voucher_threshold and cost <= money and money - cost >= reserve:
-                return [Actions.BUY_VOUCHER, [i + 1]]
+                return ("buy", {"voucher": i})
 
         # 2/3. Jokers
         candidates = []
-        for i, card in enumerate(shop.get("cards") or []):
+        for i, card in enumerate(_cards(G, "shop")):
             if not _is_joker(card):
                 continue
-            cost = card.get("cost", 99)
+            cost = _buy_cost(card)
             net = self.joker_value(card, owned, ante) - p.cost_weight * cost
             candidates.append((net, i, card, cost))
         candidates.sort(key=lambda c: -c[0])
@@ -223,12 +245,11 @@ class ShopPolicy:
         for net, i, card, cost in candidates:
             if net < p.buy_threshold:
                 break
-            needs_slot = card.get("edition") != "negative"
-            can_break_reserve = net >= p.reserve_break_value
+            needs_slot = _edition(card) != "negative"
 
             if free_slot or not needs_slot:
-                if cost <= money and (money - cost >= reserve or can_break_reserve):
-                    return [Actions.BUY_CARD, [i + 1]]
+                if cost <= money and (money - cost >= reserve or net >= p.reserve_break_value):
+                    return ("buy", {"card": i})
                 continue
 
             worst = self._worst_owned(owned, ante)
@@ -239,20 +260,18 @@ class ShopPolicy:
             # the next call sees exactly this number and goes through.
             remaining = owned[:w_idx] + owned[w_idx + 1:]
             net_after = self.joker_value(card, remaining, ante) - p.cost_weight * cost
-            sell = owned[w_idx].get("sell_cost") or 0
-            after = money + sell - cost
-            can_break_reserve = net_after >= p.reserve_break_value
+            after = money + _sell_cost(owned[w_idx]) - cost
             if (net_after >= p.buy_threshold
                     and net_after - w_val >= p.replace_margin and after >= 0
-                    and (after >= reserve or can_break_reserve)):
-                return [Actions.SHOP_SELL_JOKER, [w_idx + 1]]
+                    and (after >= reserve or net_after >= p.reserve_break_value)):
+                return ("sell", {"joker": w_idx})
 
         # 4. Reroll
-        reroll_cost = shop.get("reroll_cost")
+        reroll_cost = (G.get("round") or {}).get("reroll_cost")
         if (reroll_cost is not None and self._rerolls < p.max_rerolls
                 and money - reroll_cost >= max(p.reroll_reserve, reserve)):
             self._rerolls += 1
-            return [Actions.REROLL_SHOP]
+            return ("reroll", {})
 
         # 5. Done
-        return [Actions.END_SHOP]
+        return ("next_round", {})

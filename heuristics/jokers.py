@@ -198,9 +198,8 @@ UNKNOWN_TIER = "C"
 def lookup(card):
     """Find JokerInfo for a card dict from the game state, or None."""
     info = BY_KEY.get(card.get("key"))
-    if info is None:
-        name = card.get("ability_name") or card.get("label") or ""
-        info = BY_NAME.get(name.lower())
+    if info is None and card.get("name"):
+        info = BY_NAME.get(card["name"].lower())
     return info
 
 
