@@ -14,17 +14,17 @@ Gymnasium environment.
    [uv](https://docs.astral.sh/uv).
 2. Install the BalatroBot mod by following its
    [installation guide](https://coder.github.io/balatrobot/installation/).
-3. Start the game with the mod:
-   ```
-   uvx balatrobot==1.5.2 serve --fast
-   ```
-4. Optional but recommended: patch the mod so web pages open in your browser
+3. Optional but recommended: patch the mod so web pages open in your browser
    can't send it commands (see `patches/patch_balatrobot.py` for details):
    ```
    python patches/patch_balatrobot.py "<Balatro Mods folder>/balatrobot"
    ```
-   Restart the game afterwards. Re-run it after updating the mod;
+   Re-run it after updating the mod;
    `--revert` undoes it.
+4. Start the game with the mod:
+   ```
+   uvx balatrobot==1.5.2 serve --fast
+   ```
 5. Check that it responds:
    ```
    python -c "from client import BalatroClient; print(BalatroClient().health())"
