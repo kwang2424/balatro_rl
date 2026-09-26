@@ -57,11 +57,39 @@ The agent (`agent.py`) routes each game state to a policy:
   (`to_vector()`/`from_vector()`) for later tuning.
 - Blinds are always selected and booster packs are skipped.
 
+## Simulator
+
+[jackdaw](https://github.com/TylerFlar/jackdaw-balatro) is a Python
+reimplementation of the Balatro engine that speaks the same API and validates
+itself against the real game. `sim_client.SimClient` is a drop-in replacement
+for `BalatroClient`, so everything here runs on it without the game. It needs
+Python 3.12+:
+
+```
+pip install "jackdaw @ git+https://github.com/TylerFlar/jackdaw-balatro@e66de78855df84755d3af7d9a016129f3449f878"
+python run_baseline.py --sim --runs 500 --workers 8
+```
+
+On the simulator, hand play scores its shortlisted plays exactly by simulating
+each one on a copy of the game (jokers, enhancements, boss blinds included;
+chance effects are sampled, not read off the seed). The live game can't do
+this, so pass `--no-exact-scoring` to compare like with like.
+
+For reference, on 200 seeds (`--seed 0`, Red deck, White stake):
+
+| Hand scoring | Mean ante | Wins | Time (4 workers) |
+|---|---|---|---|
+| Estimate (ignores jokers) | 3.27 | 0 | 5 s |
+| Exact (simulated) | 3.72 | 0 | 16 s |
+
+Treat simulator results as provisional until spot-checked on the live game.
+
 ## Gym env
 
 `env/balatro_gym.py` wraps the hand-play decisions only. Everything between
 hands is handled by the heuristic agent. See the module docstring for the
-action, observation and reward definitions.
+action, observation and reward definitions. Pass `client=SimClient()` to
+train on the simulator.
 
 ## Tests
 
