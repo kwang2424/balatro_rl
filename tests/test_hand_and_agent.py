@@ -67,6 +67,23 @@ class HandPolicyTest(unittest.TestCase):
         self.assertEqual(method, "discard")
         self.assertEqual(sorted(params["cards"]), [4, 5, 6, 7])
 
+    def test_forced_card_in_every_play_and_discard(self):
+        # Cerulean Bell: the live game shows the forced card as highlighted.
+        codes = ["AH", "AD", "AC", "KS", "2H", "5D", "7C", "9S"]
+        G = self.G(codes)
+        G["hand"]["cards"][7]["state"]["highlight"] = True
+        method, params = HandPolicy()(G)
+        self.assertEqual(method, "play")
+        self.assertIn(7, params["cards"])
+        self.assertLessEqual(len(params["cards"]), 5)
+
+        G = self.G(["2H", "5H", "9H", "JH", "KD", "3C", "4S", "6D"], need=5000)
+        G["hand"]["cards"][1]["state"]["highlight"] = True  # an on-suit card
+        method, params = HandPolicy()(G)
+        self.assertEqual(method, "discard")
+        self.assertIn(1, params["cards"])
+        self.assertLessEqual(len(params["cards"]), 5)
+
     def test_plays_when_out_of_discards(self):
         G = self.G(["2H", "5H", "9H", "JH", "KD", "3C", "4S", "6D"], need=5000, discards=0)
         self.assertEqual(HandPolicy()(G)[0], "play")

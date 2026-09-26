@@ -89,13 +89,24 @@ def estimate_score(cards, hands_info=None):
     return chips * mult, name
 
 
-def all_plays(hand_cards, hands_info=None):
-    """(score, indices, hand_name) for every 1-5 card play, best first."""
+def forced_indices(hand_cards):
+    """Cards the game forces into every selection (Cerulean Bell's highlight)."""
+    return [i for i, c in enumerate(hand_cards) if (c.get("state") or {}).get("highlight")]
+
+
+def all_plays(hand_cards, hands_info=None, required=()):
+    """(score, indices, hand_name) for every 1-5 card play, best first.
+
+    Every play includes the indices in `required`.
+    """
+    required = sorted(set(required))
+    others = [i for i in range(len(hand_cards)) if i not in required]
     plays = []
-    for k in range(1, min(5, len(hand_cards)) + 1):
-        for idx in combinations(range(len(hand_cards)), k):
+    for k in range(max(1 - len(required), 0), min(5 - len(required), len(others)) + 1):
+        for extra in combinations(others, k):
+            idx = sorted(required + list(extra))
             score, name = estimate_score([hand_cards[i] for i in idx], hands_info)
-            plays.append((score, list(idx), name))
+            plays.append((score, idx, name))
     plays.sort(key=lambda p: -p[0])
     return plays
 
@@ -156,9 +167,10 @@ class HandPolicy:
         discards_left = rnd.get("discards_left", 0)
         need = max(current_blind_score(G) - (rnd.get("chips") or 0), 0)
 
-        plays = all_plays(cards, G.get("hands"))
+        forced = forced_indices(cards)
+        plays = all_plays(cards, G.get("hands"), required=forced)
         if not plays:
-            return ("play", {"cards": [0]})
+            return ("play", {"cards": forced[:5] or [0]})
         if self.scorer:
             plays = shortlist(plays, self.per_type)
             exact = self.scorer([p[1] for p in plays])
@@ -169,9 +181,18 @@ class HandPolicy:
         if name in self.STRONG_HANDS or on_pace or discards_left <= 0:
             return ("play", {"cards": idx})
 
-        return ("discard", {"cards": self._discard_choice(cards, idx)})
+        return ("discard", {"cards": self._discard_choice(cards, idx, forced)})
 
-    def _discard_choice(self, cards, keep):
+    def _discard_choice(self, cards, keep, forced=()):
+        choice = self._pick_discards(cards, keep)
+        # A forced card must be part of the selection; it replaces the most
+        # valuable of the chosen discards if the selection is already full.
+        for i in forced:
+            if i not in choice:
+                choice = (choice if len(choice) < 5 else choice[:4]) + [i]
+        return choice
+
+    def _pick_discards(self, cards, keep):
         by_rank = lambda i: RANK_VALUE.get(_value(cards[i])[0], 0)
         if self.chase_flush:
             suits = Counter(_value(c)[1] for c in cards if _value(c)[1])

@@ -96,6 +96,10 @@ python tune_shop.py --generations 25 --runs-per-eval 100 --workers 8
 python run_baseline.py --sim --runs 500 --shop-params tuned_shop_params.json
 ```
 
+The first run (25 generations, about 32,000 runs, 42 minutes on 4 cores) raised
+blinds cleared per run from 9.28 to 10.38 on 1,000 holdout seeds (mean ante
+3.63 → 3.98). Details and what changed are in `results/shop_tuning/`.
+
 It tunes for the hand policy it runs with: exact scoring by default, or
 `--no-exact-scoring` to tune for the live game's estimate-based play.
 

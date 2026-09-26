@@ -35,10 +35,27 @@ class SimClient(BalatroClient):
 
     def rpc(self, method, **params):
         try:
-            return self.backend.handle(method, params or None)
+            result = self.backend.handle(method, params or None)
         except RPCError as e:
             raise BalatroError(method, {"code": e.code, "message": e.message,
                                         "data": e.data}) from None
+        self._mark_forced_cards(result)
+        return result
+
+    def _mark_forced_cards(self, result):
+        """Show Cerulean Bell's forced card as highlighted, like the live game.
+
+        jackdaw enforces the forced selection but always serializes
+        highlight=False, so a policy couldn't see which card it is.
+        """
+        gs = self.backend._gs
+        cards = ((result or {}).get("hand") or {}).get("cards") if isinstance(result, dict) else None
+        if not gs or not cards:
+            return
+        for card, engine_card in zip(cards, gs.get("hand") or []):
+            ability = getattr(engine_card, "ability", None)
+            if isinstance(ability, dict) and ability.get("forced_selection"):
+                card.setdefault("state", {})["highlight"] = True
 
     def score_plays(self, candidates):
         """Exact score of each candidate play (lists of hand indices).

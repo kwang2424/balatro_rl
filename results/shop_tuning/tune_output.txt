@@ -1,0 +1,31 @@
+gen  1: best 9.58 blinds (ante 3.73), population mean 6.48, defaults 9.33 (+0.25)  errors 0  [74s]
+gen  2: best 9.61 blinds (ante 3.69), population mean 8.35, defaults 9.43 (+0.18)  errors 3  [164s]
+gen  3: best 9.12 blinds (ante 3.57), population mean 7.83, defaults 9.52 (-0.40)  errors 1  [250s]
+gen  4: best 9.75 blinds (ante 3.77), population mean 8.68, defaults 9.53 (+0.22)  errors 0  [348s]
+gen  5: best 10.12 blinds (ante 3.92), population mean 9.38, defaults 9.81 (+0.31)  errors 0  [448s]
+gen  6: best 10.00 blinds (ante 3.87), population mean 9.22, defaults 9.60 (+0.40)  errors 3  [551s]
+gen  7: best 10.42 blinds (ante 4.01), population mean 9.27, defaults 9.69 (+0.73)  errors 0  [653s]
+gen  8: best 9.31 blinds (ante 3.62), population mean 8.78, defaults 9.02 (+0.29)  errors 0  [753s]
+gen  9: best 10.12 blinds (ante 3.89), population mean 7.99, defaults 9.41 (+0.71)  errors 4  [846s]
+gen 10: best 10.64 blinds (ante 4.08), population mean 10.20, defaults 9.79 (+0.85)  errors 0  [957s]
+gen 11: best 10.61 blinds (ante 4.05), population mean 9.58, defaults 9.37 (+1.24)  errors 0  [1059s]
+gen 12: best 10.32 blinds (ante 3.96), population mean 9.24, defaults 9.56 (+0.76)  errors 0  [1158s]
+gen 13: best 10.93 blinds (ante 4.17), population mean 10.04, defaults 9.33 (+1.60)  errors 0  [1265s]
+gen 14: best 10.85 blinds (ante 4.13), population mean 10.16, defaults 9.80 (+1.05)  errors 0  [1371s]
+gen 15: best 10.28 blinds (ante 3.96), population mean 9.58, defaults 9.05 (+1.23)  errors 2  [1470s]
+gen 16: best 10.90 blinds (ante 4.10), population mean 10.01, defaults 9.49 (+1.41)  errors 1  [1573s]
+gen 17: best 10.36 blinds (ante 4.00), population mean 9.74, defaults 9.54 (+0.82)  errors 0  [1678s]
+gen 18: best 9.82 blinds (ante 3.80), population mean 9.24, defaults 8.67 (+1.15)  errors 0  [1779s]
+gen 19: best 11.36 blinds (ante 4.33), population mean 10.67, defaults 9.64 (+1.72)  errors 2  [1894s]
+gen 20: best 10.76 blinds (ante 4.13), population mean 10.15, defaults 9.24 (+1.52)  errors 0  [2006s]
+gen 21: best 11.36 blinds (ante 4.29), population mean 10.52, defaults 9.98 (+1.38)  errors 0  [2117s]
+gen 22: best 9.91 blinds (ante 3.82), population mean 9.55, defaults 9.02 (+0.89)  errors 0  [2213s]
+gen 23: best 10.86 blinds (ante 4.11), population mean 10.13, defaults 9.97 (+0.89)  errors 1  [2317s]
+gen 24: best 10.84 blinds (ante 4.09), population mean 10.25, defaults 9.51 (+1.33)  errors 2  [2424s]
+gen 25: best 10.82 blinds (ante 4.17), population mean 10.45, defaults 9.41 (+1.41)  errors 0  [2529s]
+
+holdout: 1000 unseen seeds ...
+  defaults:           9.30 blinds, ante 3.64, wins 0.2%, errors 1
+  tuned (CMA mean):   10.38 blinds, ante 3.98, wins 0.0%, errors 0
+  best single sample: 10.34 blinds, ante 3.96, wins 0.1%, errors 0
+wrote tuned parameters to tuned_shop_params.json

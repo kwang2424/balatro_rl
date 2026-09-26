@@ -38,6 +38,17 @@ class SimClientTest(unittest.TestCase):
         G2 = client.play(play)
         self.assertEqual(G2["round"]["chips"] - G["round"]["chips"], predicted)
 
+    def test_forced_card_is_shown_and_respected(self):
+        client, G = self.start_round()
+        client.backend._gs["hand"][2].ability["forced_selection"] = True
+        G = client.gamestate()
+        self.assertTrue(G["hand"]["cards"][2]["state"]["highlight"])
+        with self.assertRaises(Exception):
+            client.discard([0, 1])
+        method, params = HandPolicy()(G)
+        self.assertIn(2, params["cards"])
+        client.do((method, params))  # accepted
+
     def test_illegal_play_scores_negative(self):
         client, G = self.start_round()
         self.assertEqual(client.score_plays([[99]]), [-1])
