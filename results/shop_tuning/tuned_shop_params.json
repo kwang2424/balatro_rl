@@ -1,0 +1,72 @@
+{
+  "params": {
+    "tier_s": 11.56351980267562,
+    "tier_a": 4.299401903024188,
+    "tier_b": 7.853536074641893,
+    "tier_c": 5.639160641774877,
+    "tier_d": -1.6154342019132228,
+    "econ_early": -0.16973396915355465,
+    "econ_late": -3.856436549604792,
+    "xmult_early": -2.3963229940481674,
+    "xmult_late": 2.648866800064728,
+    "scaling_early": -0.5591856930466463,
+    "scaling_late": -0.6494134519944845,
+    "chips_mult_early": 2.8377814271865422,
+    "build_bonus": 4.079966572048253,
+    "shared_tag_bonus": 0.13346067096341444,
+    "copy_per_xmult_owned": 2.5096827924943717,
+    "setup_penalty": 4.192742431899774,
+    "risky_penalty": 0.6162985370132842,
+    "rental_penalty": 2.618999171007168,
+    "foil_bonus": 1.233405812244587,
+    "holo_bonus": 0.7655330368734712,
+    "polychrome_bonus": 4.045271924060097,
+    "cost_weight": 0.05360654681394461,
+    "early_reserve": 0.008419612690542281,
+    "reserve": 49.132953279459436,
+    "early_antes": 5.865834946196712,
+    "reserve_break_value": 14.696149113842473,
+    "buy_threshold": 3.004866474146352,
+    "replace_margin": 2.1042933537507995,
+    "voucher_threshold": 7.665685483357592,
+    "reroll_reserve": 33.722247750963106,
+    "max_rerolls": 3.373914593461297
+  },
+  "picked": "tuned",
+  "holdout": {
+    "runs": 1000,
+    "defaults": [
+      9.303,
+      3.64,
+      0.002,
+      1
+    ],
+    "tuned": [
+      10.382,
+      3.981,
+      0.0,
+      0
+    ],
+    "best_sample": [
+      10.344,
+      3.961,
+      0.001,
+      0
+    ]
+  },
+  "settings": {
+    "generations": 25,
+    "popsize": 12,
+    "runs_per_eval": 100,
+    "holdout_runs": 1000,
+    "sigma": 0.2,
+    "workers": 4,
+    "seed": 0,
+    "deck": "RED",
+    "stake": "WHITE",
+    "no_flush": false,
+    "exact_scoring": true,
+    "out": "tuned_shop_params.json",
+    "log": "tune_log.csv"
+  }
+}
