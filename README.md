@@ -18,7 +18,14 @@ Gymnasium environment.
    ```
    uvx balatrobot==1.5.2 serve --fast
    ```
-4. Check that it responds:
+4. Optional but recommended: patch the mod so web pages open in your browser
+   can't send it commands (see `patches/patch_balatrobot.py` for details):
+   ```
+   python patches/patch_balatrobot.py "<Balatro Mods folder>/balatrobot"
+   ```
+   Restart the game afterwards. Re-run it after updating the mod;
+   `--revert` undoes it.
+5. Check that it responds:
    ```
    python -c "from client import BalatroClient; print(BalatroClient().health())"
    ```
@@ -62,5 +69,9 @@ action, observation and reward definitions.
 python -m unittest discover -s tests -t .
 ```
 
-The tests run against `tests/fake_game.py`, an in-memory stand-in for the API.
+`tests/test_balatrobot_patch.py` also runs the patched mod server under LuaJIT;
+it needs `pip install lupa` and a BalatroBot checkout (`BALATROBOT_SRC`), and
+is skipped otherwise.
+
+The other tests run against `tests/fake_game.py`, an in-memory stand-in for the API.
 It checks the plumbing, not strategy: jokers have no effect there.
