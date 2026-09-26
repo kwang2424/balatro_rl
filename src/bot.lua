@@ -22,6 +22,7 @@ Bot.ACTIONS = {
     REARRANGE_HAND = 17,
     PASS = 18,
     START_RUN = 19,
+    SHOP_SELL_JOKER = 21,
 }
 
 Bot.ACTIONPARAMS = { }
@@ -178,6 +179,19 @@ Bot.ACTIONPARAMS[Bot.ACTIONS.SELL_JOKER] = {
             not G.jokers.cards[action[2][1]].ability.eternal then
                 return true
             end
+        end
+        return false
+    end,
+}
+Bot.ACTIONPARAMS[Bot.ACTIONS.SHOP_SELL_JOKER] = {
+    num_args = 2,
+    func = "select_shop_action",
+    isvalid = function(action)
+        if G and G.STATE == G.STATES.SHOP and G.jokers and G.jokers.cards and
+        #action == 2 and #action[2] == 1 and
+        Utils.isTableInRange(action[2], 1, #G.jokers.cards) and
+        not G.jokers.cards[action[2][1]].ability.eternal then
+            return true
         end
         return false
     end,

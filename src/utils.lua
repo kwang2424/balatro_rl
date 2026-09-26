@@ -10,6 +10,17 @@ function Utils.getCardData(card)
     _card.value = card.config.card.value
     _card.card_key = card.config.card_key
 
+    -- Identify non-playing cards (jokers, vouchers, consumables, boosters)
+    _card.key = card.config.center and card.config.center.key
+    _card.set = card.ability and card.ability.set
+    _card.ability_name = card.ability and card.ability.name
+    _card.cost = card.cost
+    _card.sell_cost = card.sell_cost
+    _card.edition = card.edition and card.edition.type
+    _card.eternal = card.ability and card.ability.eternal or false
+    _card.rental = card.ability and card.ability.rental or false
+    _card.perishable = card.ability and card.ability.perishable or false
+
     return _card
 end
 
@@ -71,6 +82,9 @@ end
 function Utils.getAnteData()
     local _ante = { }
     _ante.blinds = Utils.getBlindData()
+    if G and G.GAME and G.GAME.round_resets then
+        _ante.number = G.GAME.round_resets.ante
+    end
 
     return _ante
 end
@@ -142,6 +156,7 @@ function Utils.getGameData()
         _game.max_jokers = G.GAME.max_jokers
         _game.bankrupt_at = G.GAME.bankrupt_at
         _game.chips = _game.chips
+        _game.joker_slots = G.jokers and G.jokers.config and G.jokers.config.card_limit
     end
 
     return _game

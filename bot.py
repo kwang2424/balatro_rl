@@ -53,6 +53,7 @@ class Actions(Enum):
     PASS = 18
     START_RUN = 19
     SEND_GAMESTATE = 20
+    SHOP_SELL_JOKER = 21
 
 
 class Bot:

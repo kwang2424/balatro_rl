@@ -1,5 +1,6 @@
 from bot import Bot, Actions
 from gamestates import cache_state
+from heuristics.shop import ShopPolicy
 import time
 
 
@@ -7,6 +8,9 @@ import time
 # otherwise keeps the most common suit
 # Discarding the rest, or playing the rest if there are no discards left
 class FlushBot(Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.shop_policy = ShopPolicy(build={"flush"})
 
     def skip_or_select_blind(self, G):
         cache_state("skip_or_select_blind", G)
@@ -65,15 +69,13 @@ class FlushBot(Bot):
         global t
         t += 1
 
-        return [Actions.END_SHOP]
+        return self.shop_policy(G)
 
     def select_booster_action(self, G):
         return [Actions.SKIP_BOOSTER_PACK]
 
     def sell_jokers(self, G):
-        if len(G["jokers"]) > 1:
-            return [Actions.SELL_JOKER, [2]]
-
+        # Selling is handled in the shop by the shop policy
         return [Actions.SELL_JOKER, []]
 
     def rearrange_jokers(self, G):

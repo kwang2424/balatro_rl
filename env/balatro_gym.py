@@ -3,6 +3,7 @@ from gymnasium import spaces
 import numpy as np
 from connect import Connection, Actions
 import time
+from heuristics.shop import ShopPolicy
 
 rank_map = {
     '2': 2,
@@ -55,6 +56,7 @@ class BalatroGym(gym.Env):
         # also later on, want to build functionality that lets it select or skip blinds
 
         self.max_steps = max_steps
+        self.shop_policy = ShopPolicy()
 
     def reset(self):
         if self.connection is None:
@@ -114,7 +116,7 @@ class BalatroGym(gym.Env):
             case "select_cards_from_hand":
                 return None
             case "select_shop_action":
-                return [Actions.END_SHOP]
+                return self.shop_policy(game_state)
             case "select_booster_action":
                 return [Actions.SKIP_BOOSTER_PACK]
             case "sell_jokers":

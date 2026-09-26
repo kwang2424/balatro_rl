@@ -1,30 +1,7 @@
 import socket
 import subprocess
 import json
-from enum import Enum
-# bot.py
-
-class Actions(Enum):
-    SELECT_BLIND = 1
-    SKIP_BLIND = 2
-    PLAY_HAND = 3
-    DISCARD_HAND = 4
-    END_SHOP = 5
-    REROLL_SHOP = 6
-    BUY_CARD = 7
-    BUY_VOUCHER = 8
-    BUY_BOOSTER = 9
-    SELECT_BOOSTER_CARD = 10
-    SKIP_BOOSTER_PACK = 11
-    SELL_JOKER = 12
-    USE_CONSUMABLE = 13
-    SELL_CONSUMABLE = 14
-    REARRANGE_JOKERS = 15
-    REARRANGE_CONSUMABLES = 16
-    REARRANGE_HAND = 17
-    PASS = 18
-    START_RUN = 19
-    SEND_GAMESTATE = 20
+from bot import Actions
 
 
 class Connection:

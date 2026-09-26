@@ -330,6 +330,9 @@ function Middleware.c_shop()
             _done_shopping = true
             clickcard(_choices[Bot.ACTIONS.BUY_BOOSTER][_card[1]])
             usecard(_choices[Bot.ACTIONS.BUY_BOOSTER][_card[1]])
+        elseif _action == Bot.ACTIONS.SHOP_SELL_JOKER then
+            clickcard(G.jokers.cards[_card[1]])
+            usecard(G.jokers.cards[_card[1]])
         end
     
         if not _done_shopping then
