@@ -3,3 +3,4 @@ gamestate_cache
 baseline_results.csv
 /tune_log.csv
 /tuned_shop_params.json
+/tune_errors.jsonl

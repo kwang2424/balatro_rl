@@ -88,18 +88,28 @@ def _run(job):
     params_vec, seed = job
     _agent.shop_policy = ShopPolicy(ShopParams.from_vector(params_vec), build=_build)
     row = _agent.play_run(deck=_deck, stake=_stake, seed=seed)
-    return blinds_cleared(row), row["ante"] or 0, bool(row["won"]), bool(row["error"])
+    error = f"{seed}: {row['error']}" if row["error"] else ""
+    return blinds_cleared(row), row["ante"] or 0, bool(row["won"]), error
 
 
-def evaluate(pool, workers, param_sets, seeds):
-    """Mean (blinds cleared, ante, win rate, errors) for each parameter set."""
+def evaluate(pool, workers, param_sets, seeds, error_log=None):
+    """Mean (blinds cleared, ante, win rate, errors) for each parameter set.
+
+    Error messages (with the seed and parameters) are appended to error_log.
+    """
     jobs = [(p.to_vector(), s) for p in param_sets for s in seeds]
     results = pool.map(_run, jobs, chunksize=max(1, len(jobs) // (workers * 8)))
     out, n = [], len(seeds)
     for i in range(len(param_sets)):
         chunk = results[i * n:(i + 1) * n]
         out.append((sum(r[0] for r in chunk) / n, sum(r[1] for r in chunk) / n,
-                    sum(r[2] for r in chunk) / n, sum(r[3] for r in chunk)))
+                    sum(r[2] for r in chunk) / n, sum(bool(r[3]) for r in chunk)))
+        if error_log is not None:
+            for r in chunk:
+                if r[3]:
+                    error_log.write(json.dumps({"error": r[3],
+                                                "params": asdict(param_sets[i])}) + "\n")
+                    error_log.flush()
     return out
 
 
@@ -123,6 +133,8 @@ def main(argv=None):
                                    "instead of the defaults; missing fields use defaults")
     ap.add_argument("--out", default="tuned_shop_params.json")
     ap.add_argument("--log", default="tune_log.csv")
+    ap.add_argument("--error-log", default="tune_errors.jsonl",
+                    help="runs that ended in an error, with seed and params")
     args = ap.parse_args(argv)
 
     try:
@@ -142,7 +154,8 @@ def main(argv=None):
     t0 = time.time()
     with multiprocessing.Pool(args.workers, _init_worker,
                               (args.exact_scoring, build, args.deck, args.stake)) as pool, \
-            open(args.log, "w", newline="") as logf:
+            open(args.log, "w", newline="") as logf, \
+            open(args.error_log, "w") as errf:
         log = csv.writer(logf)
         log.writerow(["generation", "best_blinds", "mean_blinds", "start_blinds",
                       "best_ante", "best_winrate", "errors", "seconds"])
@@ -151,7 +164,7 @@ def main(argv=None):
             xs = es.ask()
             candidates = [from_unit(x) for x in xs]
             # Include the defaults each generation as a reference point.
-            scores = evaluate(pool, args.workers, candidates + [default], seeds)
+            scores = evaluate(pool, args.workers, candidates + [default], seeds, errf)
             ref = scores.pop()
             es.tell(xs, [-s[0] for s in scores])  # cma minimizes
 
@@ -174,7 +187,7 @@ def main(argv=None):
         tuned = from_unit(es.result.xfavorite)
         holdout = make_seeds(args.holdout_runs, HOLDOUT_BASE_SEED + args.seed)
         print(f"\nholdout: {args.holdout_runs} unseen seeds ...", flush=True)
-        d, t, b = evaluate(pool, args.workers, [default, tuned, best[1]], holdout)
+        d, t, b = evaluate(pool, args.workers, [default, tuned, best[1]], holdout, errf)
 
     def fmt(r):
         return f"{r[0]:.2f} blinds, ante {r[1]:.2f}, wins {100 * r[2]:.1f}%, errors {r[3]}"
