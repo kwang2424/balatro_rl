@@ -21,7 +21,7 @@ The same 1,000 unseen seeds as `results/shop_tuning` (`run_baseline.py --sim --s
 | Original defaults, no planets/packs | 9.28 | 3.63 | 23% | 1% | 1 |
 | Tuning run 1, no planets/packs | 10.38 | 3.98 | 34% | 2% | 0 |
 | Defaults + planets/packs | 10.23 | 3.93 | 31% | 3% | 1 |
-| Tuning run 1 + planets/packs | 11.72 | 4.40 | 51% | 5% | 1 |
+| Tuning run 1 + planets/packs | 11.72 | 4.40 | 49% | 4% | 1 |
 | **Tuning run 2** (`tuned_shop_params.json`) | **13.28** | **4.91** | **63%** | **12%** | **13** |
 
 Tuning run 2 vs tuning run 1 + planets/packs: **+1.56 blinds per run (95% CI
