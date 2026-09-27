@@ -55,7 +55,10 @@ The agent (`agent.py`) routes each game state to a policy:
   worst joker to make room for a clearly better one, rerolls within a budget
   and keeps money for interest. Every number is in `ShopParams`
   (`to_vector()`/`from_vector()`) for later tuning.
-- Blinds are always selected and booster packs are skipped.
+- The shop also buys planets for the hands the bot plays most, and
+  Buffoon/Celestial packs. It uses planets right away and sells other
+  consumables. In an opened pack it takes the best joker or planet.
+- Blinds are always selected.
 
 ## Simulator
 
@@ -96,9 +99,18 @@ python tune_shop.py --generations 25 --runs-per-eval 100 --workers 8
 python run_baseline.py --sim --runs 500 --shop-params tuned_shop_params.json
 ```
 
-The first run (25 generations, about 32,000 runs, 42 minutes on 4 cores) raised
-blinds cleared per run from 9.28 to 10.38 on 1,000 holdout seeds (mean ante
-3.63 → 3.98). Details and what changed are in `results/shop_tuning/`.
+Progress on 1,000 holdout seeds (details in `results/`):
+
+| Version | Blinds cleared | Mean ante | Wins |
+|---|---|---|---|
+| Original defaults | 9.28 | 3.63 | 0.1% |
+| Tuning run 1 (`results/shop_tuning/`) | 10.38 | 3.98 | 0% |
+| + planets and packs | 11.72 | 4.40 | 0.1% |
+| Tuning run 2 (`results/shop_tuning_2/`) | **13.28** | **4.91** | **1.3%** |
+
+The best parameters so far are in
+`results/shop_tuning_2/tuned_shop_params.json`. Pass them with
+`--shop-params`, or to `tune_shop.py --init` to continue from them.
 
 It tunes for the hand policy it runs with: exact scoring by default, or
 `--no-exact-scoring` to tune for the live game's estimate-based play.

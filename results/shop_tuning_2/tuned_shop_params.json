@@ -1,0 +1,78 @@
+{
+  "params": {
+    "tier_s": 7.73613417377161,
+    "tier_a": 8.138592738293712,
+    "tier_b": 6.593185274256665,
+    "tier_c": 4.3784102851606965,
+    "tier_d": 0.03365821743637554,
+    "econ_early": -2.6790437282281028,
+    "econ_late": -2.967443872836014,
+    "xmult_early": -2.5850271432487735,
+    "xmult_late": 1.2034839536757933,
+    "scaling_early": -1.2999448276154584,
+    "scaling_late": 0.5545838643031882,
+    "chips_mult_early": 2.9778406915563966,
+    "build_bonus": 4.077678046962744,
+    "shared_tag_bonus": 0.16426178379768028,
+    "copy_per_xmult_owned": 2.089810775145342,
+    "setup_penalty": 4.330089551540158,
+    "risky_penalty": 1.2379368367436587,
+    "rental_penalty": 3.26976868079416,
+    "foil_bonus": 2.693588786955467,
+    "holo_bonus": 3.6974640348152477,
+    "polychrome_bonus": 4.48803176997191,
+    "cost_weight": 0.14445515493157704,
+    "early_reserve": 0.14517557427971775,
+    "reserve": 17.980712642620325,
+    "early_antes": 5.975751210226541,
+    "reserve_break_value": 14.632290866750706,
+    "buy_threshold": 0.45427155928563145,
+    "replace_margin": 0.9422657760091445,
+    "voucher_threshold": 7.54926043402533,
+    "reroll_reserve": 16.15134872105927,
+    "max_rerolls": 3.1835624641300466,
+    "planet_value": 13.57224919895741,
+    "build_hand_prior": 9.359812689972829,
+    "buffoon_pack_value": 7.262313687017001,
+    "celestial_pack_value": 3.9827395937107903,
+    "big_pack_bonus": 0.17712702537696345
+  },
+  "picked": "tuned",
+  "holdout": {
+    "runs": 1000,
+    "start": [
+      11.584,
+      4.369,
+      0.001,
+      0
+    ],
+    "tuned": [
+      13.267,
+      4.907,
+      0.009,
+      0
+    ],
+    "best_sample": [
+      12.921,
+      4.786,
+      0.002,
+      0
+    ]
+  },
+  "settings": {
+    "generations": 25,
+    "popsize": 12,
+    "runs_per_eval": 100,
+    "holdout_runs": 1000,
+    "sigma": 0.15,
+    "workers": 4,
+    "seed": 1,
+    "deck": "RED",
+    "stake": "WHITE",
+    "no_flush": false,
+    "exact_scoring": true,
+    "init": "results/shop_tuning/tuned_shop_params.json",
+    "out": "tuned_shop_params.json",
+    "log": "tune_log.csv"
+  }
+}
