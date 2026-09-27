@@ -4,12 +4,16 @@ Each call looks at the current game state and returns one shop action; call it
 again with the new state until it returns next_round.
 
 Priority per call:
+  0. Use owned planets (and a few no-target consumables); sell other consumables.
   1. Buy a good voucher if it doesn't break the money reserve.
-  2. Buy the best joker if there's a free slot and it clears the threshold.
-  3. If slots are full and a shop joker beats our worst one by a margin,
+  2. Buy the best item if it clears the threshold: jokers, planets for the
+     hands the bot plays, and Buffoon/Celestial packs compete in one list.
+  3. If joker slots are full and a shop joker beats our worst one by a margin,
      sell the worst one (the next call then buys the new joker).
   4. Reroll while money is above the reroll reserve and under the reroll cap.
   5. Leave the shop.
+
+In an opened booster pack it takes the best joker or planet, or skips.
 
 All numbers live in ShopParams so they can be tuned later (e.g. with CMA-ES)
 via to_vector()/from_vector().
@@ -71,6 +75,15 @@ class ShopParams:
     reroll_reserve: float = 30.0
     max_rerolls: float = 2.0
 
+    # Planets and packs. A planet is worth planet_value times the share of
+    # plays that use its hand; the build's hand starts with build_hand_prior
+    # pretend plays so the first planets go to it.
+    planet_value: float = 6.0
+    build_hand_prior: float = 5.0
+    buffoon_pack_value: float = 4.0
+    celestial_pack_value: float = 3.0
+    big_pack_bonus: float = 1.0     # per size step: jumbo +1x, mega +2x
+
     def to_vector(self):
         return [getattr(self, f.name) for f in fields(self)]
 
@@ -108,6 +121,10 @@ def _modifier(card):
     return card.get("modifier") or {}
 
 
+def _set(card):
+    return card.get("set") or ""
+
+
 def _edition(card):
     return (_modifier(card).get("edition") or "").lower() or None
 
@@ -121,9 +138,13 @@ class ShopPolicy:
         """
         self.params = params or ShopParams()
         self.build = frozenset(build)
+        self.build_hands = {J.BUILD_HANDS[b] for b in self.build if b in J.BUILD_HANDS}
         self.overrides = dict(overrides or {})
         self._shop_id = None
         self._rerolls = 0
+        self._run_seed = None
+        self._banned = set()      # (method, card key) the game rejected this run
+        self._last = None         # (method, card key) of the last action returned
 
     # ---------- valuation ----------
 
@@ -176,6 +197,38 @@ class ShopPolicy:
               "polychrome": p.polychrome_bonus}.get(_edition(card), 0.0)
         return v
 
+    def hand_weights(self, G):
+        """How much each poker hand is worth leveling, from 0 to 1.
+
+        Plays per hand relative to the most-played hand (so the main hand
+        counts fully), with build_hand_prior pretend plays for the build's hand.
+        """
+        prior = self.params.build_hand_prior
+        counts = {name: (h.get("played") or 0) for name, h in (G.get("hands") or {}).items()}
+        for name in self.build_hands:
+            counts[name] = counts.get(name, 0) + prior
+        top = max(counts.values(), default=0)
+        return {n: c / top for n, c in counts.items()} if top > 0 else {}
+
+    def planet_value(self, card, weights):
+        key = card.get("key")
+        if key == J.BLACK_HOLE:
+            return self.params.planet_value
+        return self.params.planet_value * weights.get(J.PLANET_HANDS.get(key), 0.0)
+
+    def pack_value(self, card, weights, joker_slot_free):
+        kind = J.pack_kind(card.get("key"))
+        if kind is None:
+            return None
+        name, size = kind
+        p = self.params
+        bonus = 1 + p.big_pack_bonus * size
+        if name == "buffoon" and joker_slot_free:
+            return p.buffoon_pack_value * bonus
+        if name == "celestial":
+            return p.celestial_pack_value * bonus * max(weights.values(), default=0.0)
+        return None
+
     def reserve(self, G):
         p = self.params
         used = G.get("used_vouchers") or {}
@@ -194,7 +247,23 @@ class ShopPolicy:
     def _slots(G):
         return (G.get("jokers") or {}).get("limit") or 5
 
+    def rejected(self, action):
+        """Called when the game refuses the last action: don't try it again this run."""
+        if self._last and self._last[0] == action[0]:
+            self._banned.add(self._last)
+
+    def _pick(self, method, params, card):
+        """Return an action, remembering it so a rejection can ban it."""
+        self._last = (method, card.get("key")) if card else None
+        return (method, params)
+
+    def _ok(self, method, card):
+        return (method, card.get("key")) not in self._banned
+
     def _new_shop_visit(self, G):
+        if G.get("seed") != self._run_seed:
+            self._run_seed = G.get("seed")
+            self._banned = set()
         shop_id = (G.get("seed"), G.get("round_num"), self._ante(G))
         if shop_id != self._shop_id:
             self._shop_id = shop_id
@@ -217,39 +286,71 @@ class ShopPolicy:
         return self.choose(G)
 
     def choose(self, G):
+        if G.get("state") == "SMODS_BOOSTER_OPENED":
+            return self.choose_pack(G)
         self._new_shop_visit(G)
         p = self.params
         owned = _cards(G, "jokers")
         money = G.get("money") or 0
         ante = self._ante(G)
         reserve = self.reserve(G)
+        weights = self.hand_weights(G)
+
+        # 0. Consumables: use the ones that help right away, sell the rest.
+        consumables = _cards(G, "consumables")
+        for i, card in enumerate(consumables):
+            if card.get("key") in J.USE_ON_SIGHT and self._ok("use", card):
+                return self._pick("use", {"consumable": i}, card)
+        for i, card in enumerate(consumables):
+            if not _modifier(card).get("eternal") and self._ok("sell", card):
+                return self._pick("sell", {"consumable": i}, card)
 
         # 1. Vouchers
         for i, card in enumerate(_cards(G, "vouchers")):
             v = J.VOUCHER_VALUES.get(card.get("key"), 0)
             cost = _buy_cost(card)
-            if v >= p.voucher_threshold and cost <= money and money - cost >= reserve:
-                return ("buy", {"voucher": i})
+            if (v >= p.voucher_threshold and cost <= money and money - cost >= reserve
+                    and self._ok("buy", card)):
+                return self._pick("buy", {"voucher": i}, card)
 
-        # 2/3. Jokers
+        # 2/3. Jokers, planets and packs, best first
+        free_slot = len(owned) < self._slots(G)
+        consumable_room = len(consumables) < ((G.get("consumables") or {}).get("limit") or 2)
         candidates = []
         for i, card in enumerate(_cards(G, "shop")):
-            if not _is_joker(card):
-                continue
             cost = _buy_cost(card)
-            net = self.joker_value(card, owned, ante) - p.cost_weight * cost
-            candidates.append((net, i, card, cost))
+            if _is_joker(card):
+                value = self.joker_value(card, owned, ante)
+                candidates.append((value - p.cost_weight * cost, "joker", i, card, cost))
+            elif (_set(card) == "PLANET" or card.get("key") == J.BLACK_HOLE) and consumable_room:
+                value = self.planet_value(card, weights)
+                candidates.append((value - p.cost_weight * cost, "planet", i, card, cost))
+        for i, card in enumerate(_cards(G, "packs")):
+            value = self.pack_value(card, weights, free_slot)
+            if value is not None:
+                cost = _buy_cost(card)
+                candidates.append((value - p.cost_weight * cost, "pack", i, card, cost))
         candidates.sort(key=lambda c: -c[0])
 
-        free_slot = len(owned) < self._slots(G)
-        for net, i, card, cost in candidates:
+        for net, kind, i, card, cost in candidates:
             if net < p.buy_threshold:
                 break
-            needs_slot = _edition(card) != "negative"
+            if not self._ok("buy", card):
+                continue
+            affordable = cost <= money and (money - cost >= reserve or net >= p.reserve_break_value)
+            if kind == "pack":
+                if affordable:
+                    return self._pick("buy", {"pack": i}, card)
+                continue
+            if kind == "planet":
+                if affordable:
+                    return self._pick("buy", {"card": i}, card)
+                continue
 
+            needs_slot = _edition(card) != "negative"
             if free_slot or not needs_slot:
-                if cost <= money and (money - cost >= reserve or net >= p.reserve_break_value):
-                    return ("buy", {"card": i})
+                if affordable:
+                    return self._pick("buy", {"card": i}, card)
                 continue
 
             worst = self._worst_owned(owned, ante)
@@ -264,14 +365,37 @@ class ShopPolicy:
             if (net_after >= p.buy_threshold
                     and net_after - w_val >= p.replace_margin and after >= 0
                     and (after >= reserve or net_after >= p.reserve_break_value)):
-                return ("sell", {"joker": w_idx})
+                return self._pick("sell", {"joker": w_idx}, owned[w_idx])
 
         # 4. Reroll
         reroll_cost = (G.get("round") or {}).get("reroll_cost")
         if (reroll_cost is not None and self._rerolls < p.max_rerolls
                 and money - reroll_cost >= max(p.reroll_reserve, reserve)):
             self._rerolls += 1
-            return ("reroll", {})
+            return self._pick("reroll", {}, None)
 
         # 5. Done
-        return ("next_round", {})
+        return self._pick("next_round", {}, None)
+
+    def choose_pack(self, G):
+        """Pick from an opened booster pack: the best joker or planet, else skip."""
+        owned = _cards(G, "jokers")
+        free_slot = len(owned) < self._slots(G)
+        weights = self.hand_weights(G)
+        best = None
+        for i, card in enumerate(_cards(G, "pack")):
+            if _is_joker(card):
+                if not (free_slot or _edition(card) == "negative"):
+                    continue
+                value = self.joker_value(card, owned, self._ante(G))
+                if value < self.params.buy_threshold:
+                    continue
+            elif _set(card) == "PLANET" or card.get("key") == J.BLACK_HOLE:
+                value = self.planet_value(card, weights)
+            else:
+                continue
+            if best is None or value > best[0]:
+                best = (value, i)
+        if best is None:
+            return ("pack", {"skip": True})
+        return ("pack", {"card": best[1]})

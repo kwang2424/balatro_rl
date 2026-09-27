@@ -22,7 +22,7 @@ import time
 from dataclasses import asdict, fields
 
 from heuristics.shop import ShopParams, ShopPolicy
-from run_baseline import make_seeds
+from run_baseline import load_shop_params, make_seeds
 
 # Search range for each parameter. CMA-ES works in [0, 1] per parameter.
 RANGES = {
@@ -39,6 +39,9 @@ RANGES = {
     "early_antes": (0, 6), "reserve_break_value": (3, 15),
     "buy_threshold": (-2, 8), "replace_margin": (0, 6), "voucher_threshold": (0, 12),
     "reroll_reserve": (0, 60), "max_rerolls": (0, 6),
+    "planet_value": (0, 15), "build_hand_prior": (0, 20),
+    "buffoon_pack_value": (0, 12), "celestial_pack_value": (0, 12),
+    "big_pack_bonus": (0, 2),
 }
 NAMES = [f.name for f in fields(ShopParams)]
 assert set(RANGES) == set(NAMES), set(NAMES) ^ set(RANGES)
@@ -116,6 +119,8 @@ def main(argv=None):
     ap.add_argument("--no-flush", action="store_true")
     ap.add_argument("--no-exact-scoring", dest="exact_scoring", action="store_false",
                     help="tune for the live-game hand policy (joker-blind estimate)")
+    ap.add_argument("--init", help="start from these params (JSON from an earlier run) "
+                                   "instead of the defaults; missing fields use defaults")
     ap.add_argument("--out", default="tuned_shop_params.json")
     ap.add_argument("--log", default="tune_log.csv")
     args = ap.parse_args(argv)
@@ -128,9 +133,9 @@ def main(argv=None):
         return 1
 
     build = () if args.no_flush else ("flush",)
-    default = ShopParams()
+    default = load_shop_params(args.init)  # the reference the tuned params must beat
     es = cma.CMAEvolutionStrategy(
-        to_unit(default), args.sigma,
+        [min(max(v, 0.0), 1.0) for v in to_unit(default)], args.sigma,
         {"bounds": [0, 1], "popsize": args.popsize, "seed": args.seed + 1, "verbose": -9})
 
     best = (float("-inf"), default)
@@ -139,7 +144,7 @@ def main(argv=None):
                               (args.exact_scoring, build, args.deck, args.stake)) as pool, \
             open(args.log, "w", newline="") as logf:
         log = csv.writer(logf)
-        log.writerow(["generation", "best_blinds", "mean_blinds", "default_blinds",
+        log.writerow(["generation", "best_blinds", "mean_blinds", "start_blinds",
                       "best_ante", "best_winrate", "errors", "seconds"])
         for gen in range(1, args.generations + 1):
             seeds = make_seeds(args.runs_per_eval, args.seed * 100_000 + gen)
@@ -162,7 +167,7 @@ def main(argv=None):
                           f"{gen_best[1]:.3f}", f"{gen_best[2]:.3f}", errors, int(elapsed)])
             logf.flush()
             print(f"gen {gen:2d}: best {gen_best[0]:.2f} blinds (ante {gen_best[1]:.2f}), "
-                  f"population mean {mean:.2f}, defaults {ref[0]:.2f} "
+                  f"population mean {mean:.2f}, start {ref[0]:.2f} "
                   f"({margin:+.2f})  errors {errors}  [{elapsed:.0f}s]", flush=True)
 
         # CMA-ES's mean is a less noisy pick than the single luckiest candidate.
@@ -174,16 +179,16 @@ def main(argv=None):
     def fmt(r):
         return f"{r[0]:.2f} blinds, ante {r[1]:.2f}, wins {100 * r[2]:.1f}%, errors {r[3]}"
 
-    print(f"  defaults:           {fmt(d)}")
+    print(f"  starting params:    {fmt(d)}")
     print(f"  tuned (CMA mean):   {fmt(t)}")
     print(f"  best single sample: {fmt(b)}")
-    winner = max([("tuned", t, tuned), ("best_sample", b, best[1]), ("defaults", d, default)],
+    winner = max([("tuned", t, tuned), ("best_sample", b, best[1]), ("start", d, default)],
                  key=lambda w: w[1][0])
     with open(args.out, "w") as f:
         json.dump({
             "params": asdict(winner[2]),
             "picked": winner[0],
-            "holdout": {"runs": args.holdout_runs, "defaults": d, "tuned": t, "best_sample": b},
+            "holdout": {"runs": args.holdout_runs, "start": d, "tuned": t, "best_sample": b},
             "settings": vars(args),
         }, f, indent=2)
     print(f"wrote {winner[0]} parameters to {args.out}")

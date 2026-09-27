@@ -36,11 +36,21 @@ class Agent:
             try:
                 return c.do(action)
             except BalatroError as e:
-                # A rejected shop action shouldn't end the run; leave the shop.
-                self.log(f"shop action {action} rejected ({e}); leaving shop")
+                self.log(f"shop action {action} rejected ({e})")
+                if hasattr(self.shop_policy, "rejected") and action[0] != "next_round":
+                    # The policy won't repeat it this run; ask again next step.
+                    self.shop_policy.rejected(action)
+                    return c.gamestate()
                 return c.next_round()
         if state == "SMODS_BOOSTER_OPENED":
-            return c.pack(skip=True)
+            if not hasattr(self.shop_policy, "choose_pack"):
+                return c.pack(skip=True)
+            action = self.shop_policy.choose_pack(G)
+            try:
+                return c.do(action)
+            except BalatroError as e:
+                self.log(f"pack action {action} rejected ({e}); skipping pack")
+                return c.pack(skip=True)
         time.sleep(POLL_DELAY)
         return c.gamestate()
 

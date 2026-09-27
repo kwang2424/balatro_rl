@@ -18,8 +18,9 @@ def voucher(key, cost=10):
 
 
 def state(dollars=10, ante=1, jokers=(), cards=(), vouchers=(), slots=5,
-          reroll_cost=5, round_=1, used_vouchers=None):
-    return {
+          reroll_cost=5, round_=1, used_vouchers=None, packs=(), consumables=(),
+          played=None, pack=None):
+    G = {
         "state": "SHOP",
         "seed": "TEST",
         "money": dollars,
@@ -27,11 +28,29 @@ def state(dollars=10, ante=1, jokers=(), cards=(), vouchers=(), slots=5,
         "round_num": round_,
         "used_vouchers": used_vouchers or {},
         "round": {"reroll_cost": reroll_cost},
+        "hands": {name: {"played": n} for name, n in (played or {}).items()},
         "jokers": {"cards": list(jokers), "limit": slots},
+        "consumables": {"cards": list(consumables), "limit": 2},
         "shop": {"cards": list(cards)},
         "vouchers": {"cards": list(vouchers)},
-        "packs": {"cards": []},
+        "packs": {"cards": list(packs)},
     }
+    if pack is not None:
+        G["state"] = "SMODS_BOOSTER_OPENED"
+        G["pack"] = {"cards": list(pack)}
+    return G
+
+
+def planet(key, cost=3):
+    return {"key": key, "set": "PLANET", "cost": {"buy": cost, "sell": 1}, "modifier": {}}
+
+
+def tarot(key, cost=3):
+    return {"key": key, "set": "TAROT", "cost": {"buy": cost, "sell": 1}, "modifier": {}}
+
+
+def pack(key, cost=4):
+    return {"key": key, "set": "BOOSTER", "cost": {"buy": cost, "sell": 0}, "modifier": {}}
 
 
 class JokerTableTest(unittest.TestCase):
@@ -116,6 +135,56 @@ class ShopPolicyTest(unittest.TestCase):
     def test_rental_penalty(self):
         G = state(dollars=10, cards=[joker("j_green_joker", 4, rental=True)])
         self.assertEqual(ShopPolicy(ShopParams(rental_penalty=10))(G), ("next_round", {}))
+
+    def test_uses_planets_and_sells_other_consumables(self):
+        G = state(consumables=[tarot("c_fool"), planet("c_jupiter")])
+        self.assertEqual(ShopPolicy()(G), ("use", {"consumable": 1}))
+        G = state(consumables=[tarot("c_fool")])
+        self.assertEqual(ShopPolicy()(G), ("sell", {"consumable": 0}))
+
+    def test_buys_planet_for_build_hand_only(self):
+        G = state(dollars=10, cards=[planet("c_mercury"), planet("c_jupiter")])
+        self.assertEqual(ShopPolicy(build={"flush"})(G), ("buy", {"card": 1}))
+        G = state(dollars=10, cards=[planet("c_mercury")])
+        self.assertEqual(ShopPolicy(build={"flush"})(G), ("next_round", {}))
+
+    def test_planet_follows_hands_actually_played(self):
+        G = state(dollars=10, cards=[planet("c_mercury")], played={"Pair": 30, "Flush": 1})
+        self.assertEqual(ShopPolicy(build={"flush"})(G), ("buy", {"card": 0}))
+
+    def test_buys_celestial_and_buffoon_packs_not_arcana(self):
+        policy = ShopPolicy(build={"flush"})
+        G = state(dollars=10, packs=[pack("p_arcana_normal_1"), pack("p_celestial_mega_1", 8)])
+        self.assertEqual(policy(G), ("buy", {"pack": 1}))
+        G = state(dollars=10, packs=[pack("p_buffoon_normal_1")])
+        self.assertEqual(policy(G), ("buy", {"pack": 0}))
+        full = [joker("j_blueprint")] * 5
+        G = state(dollars=10, jokers=full, packs=[pack("p_buffoon_normal_1")])
+        self.assertEqual(policy(G), ("next_round", {}))
+
+    def test_choose_from_opened_pack(self):
+        policy = ShopPolicy(build={"flush"})
+        G = state(pack=[planet("c_mercury"), planet("c_jupiter"), planet("c_pluto")])
+        self.assertEqual(policy(G), ("pack", {"card": 1}))
+        G = state(pack=[joker("j_egg"), joker("j_blueprint")])
+        self.assertEqual(policy(G), ("pack", {"card": 1}))
+        G = state(pack=[tarot("c_fool"), tarot("c_magician")])
+        self.assertEqual(policy(G), ("pack", {"skip": True}))
+        G = state(jokers=[joker("j_egg")] * 5, pack=[joker("j_blueprint")])
+        self.assertEqual(policy(G), ("pack", {"skip": True}))
+
+    def test_rejected_action_is_not_repeated(self):
+        policy = ShopPolicy()
+        G = state(consumables=[planet("c_jupiter")])
+        action = policy(G)
+        self.assertEqual(action, ("use", {"consumable": 0}))
+        policy.rejected(action)
+        self.assertEqual(policy(G), ("sell", {"consumable": 0}))
+        policy.rejected(("sell", {"consumable": 0}))
+        self.assertEqual(policy(G), ("next_round", {}))
+        # A new run clears the bans.
+        G2 = dict(G, seed="OTHER")
+        self.assertEqual(policy(G2), ("use", {"consumable": 0}))
 
     def test_params_vector_roundtrip(self):
         p = ShopParams(reserve=10)

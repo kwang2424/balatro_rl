@@ -225,3 +225,43 @@ VOUCHER_VALUES = {
     "v_glow_up": 3,
     "v_blank": 1,            # only useful as a step toward Antimatter
 }
+
+
+# Planet cards and the poker hand each one levels up (from jackdaw's centers.json).
+PLANET_HANDS = {
+    "c_pluto": "High Card",
+    "c_mercury": "Pair",
+    "c_uranus": "Two Pair",
+    "c_venus": "Three of a Kind",
+    "c_saturn": "Straight",
+    "c_jupiter": "Flush",
+    "c_earth": "Full House",
+    "c_mars": "Four of a Kind",
+    "c_neptune": "Straight Flush",
+    "c_planet_x": "Five of a Kind",
+    "c_ceres": "Flush House",
+    "c_eris": "Flush Five",
+}
+BLACK_HOLE = "c_black_hole"  # Spectral: levels up every hand
+
+# Consumables worth using straight away that need no target cards.
+# Everything else the bot ends up holding gets sold to free the slot.
+USE_ON_SIGHT = set(PLANET_HANDS) | {BLACK_HOLE, "c_hermit", "c_temperance"}
+
+# Build tag -> the poker hand that build plays.
+BUILD_HANDS = {
+    "flush": "Flush", "straight": "Straight", "pair": "Pair", "two_pair": "Two Pair",
+    "three_kind": "Three of a Kind", "four_kind": "Four of a Kind",
+    "full_house": "Full House", "high_card": "High Card",
+}
+
+
+def pack_kind(key):
+    """('buffoon' | 'celestial' | 'arcana' | 'spectral' | 'standard', size 0-2) or None.
+
+    Size is 0 for normal, 1 for jumbo and 2 for mega packs (mega picks two cards).
+    """
+    parts = (key or "").split("_")
+    if len(parts) < 3 or parts[0] != "p":
+        return None
+    return parts[1], {"normal": 0, "jumbo": 1, "mega": 2}.get(parts[2], 0)
